@@ -86,9 +86,9 @@ function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew }) 
   const primaryProject = task.project?.[0];
   const style = getTagStyle(primaryProject);
   const [visible, setVisible] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
-    // 마운트 직후 애니메이션 트리거
     const t = setTimeout(() => setVisible(true), 10);
     return () => clearTimeout(t);
   }, []);
@@ -96,17 +96,26 @@ function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew }) 
   return (
     <div
       onClick={() => onToggle(task.id, !task.done)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: "flex", alignItems: "flex-start", gap: "8px",
         padding: "9px 10px", marginBottom: "5px", borderRadius: "9px",
         background: task.done ? "#F7F7F7" : isPastTask && !task.done ? "#FFF5F5" : style.bg,
         borderLeft: `3px solid ${task.done ? "#DDD" : isPastTask && !task.done ? "#E57373" : style.accent}`,
         opacity: task.done ? 0.55 : visible ? 1 : 0,
-        transform: visible ? "translateY(0) scale(1)" : "translateY(-6px) scale(0.97)",
+        transform: !visible
+          ? "translateY(-6px) scale(0.97)"
+          : hovered && !task.done
+            ? "translateX(3px) scale(1.015)"
+            : "translateY(0) scale(1)",
+        boxShadow: hovered && !task.done
+          ? `2px 3px 10px ${style.light}88`
+          : "none",
         cursor: "pointer",
         transition: isNew
           ? "opacity 0.3s ease, transform 0.3s cubic-bezier(0.34,1.56,0.64,1)"
-          : "opacity 0.25s ease, background 0.2s ease",
+          : "opacity 0.25s ease, transform 0.18s ease, box-shadow 0.18s ease, background 0.2s ease",
       }}
     >
       {/* 미완료 과거 항목 경고 점 */}

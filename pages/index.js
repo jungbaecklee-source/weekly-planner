@@ -49,6 +49,17 @@ function getTagStyle(tag) {
   return style;
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return isMobile;
+}
+
 function getMonday(offsetWeeks = 0) {
   const now = new Date();
   const day = now.getDay();
@@ -256,7 +267,7 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
       border: isToday ? "2px solid #2D7A5E" : hasPastUndone ? "2px solid #FFCDD2" : "2px solid transparent",
       boxShadow: isToday ? "0 4px 20px rgba(45,122,94,0.13)" : "0 1px 3px rgba(0,0,0,0.04)",
       display: "flex", flexDirection: "column", gap: "8px",
-      minWidth: "145px", flex: 1,
+      minWidth: "145px", flex: 1, width: "145px",
       opacity: isPast && !hasPastUndone ? 0.65 : 1,
       transition: "all 0.3s ease",
     }}>
@@ -479,16 +490,37 @@ export default function WeeklyPlanner() {
     });
   };
 
-  const handleAdd = async (text, date, day, project) => {
+  const handleAdd = async (text, date, day, project, concern = false) => {
     const tempId = `temp-${Date.now()}`;
-    setTasks(p => [...p, { id: tempId, text, date, day, project, done: false }]);
+    setTasks(p => [...p, { id: tempId, text, date, day, project, done: false, concern }]);
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, date, day, project }),
+      body: JSON.stringify({ text, date, day, project, concern }),
     });
     const { id } = await res.json();
     setTasks(p => p.map(t => t.id === tempId ? { ...t, id } : t));
+  };
+
+  const handleAddConcern = async (text) => {
+    const tempId = `temp-${Date.now()}`;
+    setTasks(p => [...p, { id: tempId, text, date: null, day: null, project: [], done: false, concern: true }]);
+    const res = await fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, concern: true }),
+    });
+    const { id } = await res.json();
+    setTasks(p => p.map(t => t.id === tempId ? { ...t, id } : t));
+  };
+
+  const handleDeleteConcern = async (id) => {
+    setTasks(p => p.filter(t => t.id !== id));
+    await fetch("/api/tasks", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
   };
 
   // 이월: 오늘 날짜로 날짜 변경
@@ -503,15 +535,18 @@ export default function WeeklyPlanner() {
     });
   };
 
-  const allProjects = [...new Set(tasks.flatMap(t => t.project || []))].sort();
+  const concerns = tasks.filter(t => t.concern);
+  const regularTasks = tasks.filter(t => !t.concern);
+  const allProjects = [...new Set(regularTasks.flatMap(t => t.project || []))].sort();
+  const isMobile = useIsMobile();
   const rangeLabel  = `${dates[0].getMonth()+1}월 ${dates[0].getDate()}일 — ${dates[dates.length-1].getMonth()+1}월 ${dates[dates.length-1].getDate()}일`;
 
-  const filteredAll = t => activeFilter ? t.project?.includes(activeFilter) : true;
+  const filteredAll = t => !t.concern && (activeFilter ? t.project?.includes(activeFilter) : true);
   const totalDone = tasks.filter(filteredAll).filter(t => t.done).length;
   const totalAll  = tasks.filter(filteredAll).length;
 
   // 미완료 이월 항목 수
-  const pastUndoneCount = tasks.filter(t => {
+  const pastUndoneCount = regularTasks.filter(t => {
     const d = new Date(t.date);
     d.setHours(0,0,0,0);
     const tod = new Date(); tod.setHours(0,0,0,0);
@@ -520,9 +555,12 @@ export default function WeeklyPlanner() {
 
   const weekLabels = ["이번 주", "다음 주", "3주차", "4주차"];
 
+  const [concernOpen, setConcernOpen] = useState(false);
+  const [concernInput, setConcernInput] = useState("");
+
   return (
     <div style={{ minHeight: "100vh", background: "#F1F3F0",
-      fontFamily: "'Pretendard', -apple-system, sans-serif", padding: "26px 20px" }}>
+      fontFamily: "'Pretendard', -apple-system, sans-serif", padding: "26px 20px 100px" }}>
 
       <style>{`
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
@@ -531,6 +569,10 @@ export default function WeeklyPlanner() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #CCC; border-radius: 4px; }
         button, input { font-family: 'Pretendard', -apple-system, sans-serif; }
+        @media (max-width: 767px) {
+          .week-grid { flex-direction: column !important; gap: 8px !important; }
+          .day-column { min-width: unset !important; width: 100% !important; }
+        }
         @keyframes slideIn {
           from { opacity: 0; transform: translateY(-8px) scale(0.96); }
           to   { opacity: 1; transform: translateY(0) scale(1); }
@@ -675,7 +717,7 @@ export default function WeeklyPlanner() {
                 <div style={{ flex: 1, height: "1px", background: "#E6E6E6" }} />
               </div>
 
-              <div style={{ display: "flex", gap: "9px", overflowX: "auto", paddingBottom: "2px" }}>
+              <div className="week-grid" style={{ display: "flex", gap: "9px", overflowX: "auto", paddingBottom: "2px" }}>
                 {weekDates.map((date, di) => {
                   const dk = dateKey(date);
                   return (
@@ -683,7 +725,7 @@ export default function WeeklyPlanner() {
                       key={dk}
                       date={date}
                       dayLabel={DAYS[di]}
-                      tasks={tasks.filter(t => t.date === dk)}
+                      tasks={regularTasks.filter(t => t.date === dk)}
                       onToggle={handleToggle}
                       onDelete={handleDelete}
                       onAdd={handleAdd}
@@ -698,11 +740,125 @@ export default function WeeklyPlanner() {
           );
         })}
 
-        <div style={{ textAlign: "center", marginTop: "18px", fontSize: "11px", color: "#CCCCCC" }}>
+        <div style={{ textAlign: "center", marginTop: "18px", marginBottom: "8px", fontSize: "11px", color: "#CCCCCC" }}>
           Notion DB 실시간 연동&nbsp;·&nbsp;
           과거 미완료 항목은 <strong style={{ color: "#E57373" }}>오늘로 이월</strong> 가능&nbsp;·&nbsp;
           ‹ › 버튼으로 4주씩 이동
         </div>
+      </div>
+
+      {/* ── 하단 고민 패널 ── */}
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0,
+        zIndex: 1000,
+        background: "white",
+        borderTop: "1.5px solid #E8E8E8",
+        boxShadow: "0 -4px 24px rgba(0,0,0,0.08)",
+        transition: "all 0.35s cubic-bezier(0.4,0,0.2,1)",
+      }}>
+        {/* 핸들 바 — 항상 보임 */}
+        <div
+          onClick={() => setConcernOpen(o => !o)}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "12px 24px", cursor: "pointer",
+            userSelect: "none",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "16px" }}>💭</span>
+            <span style={{ fontSize: "13px", fontWeight: 700, color: "#333", letterSpacing: "-0.2px" }}>
+              상시 고민
+            </span>
+            {concerns.length > 0 && (
+              <span style={{
+                background: "#F1F3F0", borderRadius: "10px",
+                padding: "1px 8px", fontSize: "11px", color: "#888", fontWeight: 600,
+              }}>{concerns.length}</span>
+            )}
+          </div>
+          <div style={{
+            fontSize: "18px", color: "#AAAAAA", lineHeight: 1,
+            transform: concernOpen ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 0.3s ease",
+          }}>⌃</div>
+        </div>
+
+        {/* 펼쳐지는 내용 */}
+        {concernOpen && (
+          <div style={{
+            padding: "0 24px 20px",
+            maxHeight: "40vh", overflowY: "auto",
+          }}>
+            {/* 고민 목록 */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "14px" }}>
+              {concerns.length === 0 && (
+                <div style={{ fontSize: "12px", color: "#CCCCCC", padding: "8px 0" }}>
+                  아직 등록된 고민이 없어요
+                </div>
+              )}
+              {concerns.map(c => (
+                <div key={c.id} style={{
+                  display: "flex", alignItems: "center", gap: "8px",
+                  padding: "8px 14px", borderRadius: "20px",
+                  background: "#F8F8F6", border: "1.5px solid #E8E8E4",
+                  fontSize: "13px", color: "#333",
+                  transition: "all 0.2s ease",
+                }}>
+                  <span>💬</span>
+                  <span>{c.text}</span>
+                  <button
+                    onClick={() => handleDeleteConcern(c.id)}
+                    style={{
+                      background: "none", border: "none", cursor: "pointer",
+                      color: "#CCCCCC", fontSize: "14px", padding: "0", lineHeight: 1,
+                    }}
+                    onMouseEnter={e => e.target.style.color = "#FF6B6B"}
+                    onMouseLeave={e => e.target.style.color = "#CCCCCC"}
+                  >×</button>
+                </div>
+              ))}
+            </div>
+
+            {/* 고민 입력 */}
+            <div style={{ display: "flex", gap: "8px" }}>
+              <input
+                value={concernInput}
+                onChange={e => setConcernInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing && concernInput.trim()) {
+                    e.preventDefault();
+                    handleAddConcern(concernInput.trim());
+                    setConcernInput("");
+                  }
+                }}
+                placeholder="고민 추가..."
+                style={{
+                  flex: 1, padding: "8px 14px",
+                  border: "1.5px solid #E8E8E8", borderRadius: "20px",
+                  fontSize: "13px", outline: "none", color: "#333", background: "#FAFAFA",
+                  transition: "border-color 0.2s",
+                }}
+                onFocus={e => e.target.style.borderColor = "#2D7A5E"}
+                onBlur={e => e.target.style.borderColor = "#E8E8E8"}
+              />
+              <button
+                onClick={() => {
+                  if (concernInput.trim()) {
+                    handleAddConcern(concernInput.trim());
+                    setConcernInput("");
+                  }
+                }}
+                style={{
+                  background: "#2D7A5E", color: "white", border: "none",
+                  borderRadius: "20px", padding: "0 18px", height: "38px",
+                  cursor: "pointer", fontSize: "13px", fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}
+              >+ 추가</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

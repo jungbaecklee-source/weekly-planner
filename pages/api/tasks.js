@@ -50,12 +50,13 @@ export default async function handler(req, res) {
   }
 
   else if (req.method === "PATCH") {
-    const { id, done } = req.body;
+    const { id, done, date, day } = req.body;
     try {
-      await notion.pages.update({
-        page_id: id,
-        properties: { 완료: { checkbox: done } },
-      });
+      const properties = {};
+      if (typeof done !== "undefined") properties["완료"] = { checkbox: done };
+      if (date) properties["날짜"] = { date: { start: date } };
+      if (day)  properties["요일"] = { select: { name: day } };
+      await notion.pages.update({ page_id: id, properties });
       res.status(200).json({ ok: true });
     } catch (error) {
       console.error(error);

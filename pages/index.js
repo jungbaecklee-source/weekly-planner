@@ -187,10 +187,12 @@ function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew }) 
 }
 
 // ── DayColumn ─────────────────────────────────────────────
-function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOver, activeFilter }) {
+function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOver, activeFilter, allProjects }) {
   const [input, setInput] = useState("");
   const [projectInput, setProjectInput] = useState("");
   const [showProjectInput, setShowProjectInput] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedProjects, setSelectedProjects] = useState([]);
   const [newTaskIds, setNewTaskIds] = useState(new Set());
   const inputRef = useRef();
   const prevTaskIds = useRef(new Set(tasks.map(t => t.id)));
@@ -228,12 +230,21 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
 
   const handleAdd = () => {
     if (!input.trim()) return;
-    const projects = projectInput.split(/[,\s]+/).map(p => p.replace(/^#/, "").trim()).filter(Boolean);
+    const typedProjects = projectInput.split(/[,\s]+/).map(p => p.replace(/^#/, "").trim()).filter(Boolean);
+    const projects = [...new Set([...selectedProjects, ...typedProjects])];
     onAdd(input.trim(), dateKey(date), dayLabel, projects);
     setInput("");
     setProjectInput("");
     setShowProjectInput(false);
+    setShowDropdown(false);
+    setSelectedProjects([]);
     setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const toggleProject = (p) => {
+    setSelectedProjects(prev =>
+      prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+    );
   };
 
   return (
@@ -321,20 +332,94 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
           }}>+</button>
         </div>
         {showProjectInput && (
-          <input
-            value={projectInput}
-            onChange={e => setProjectInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleAdd(); } }}
-            placeholder="#프로젝트 (쉼표로 구분)"
-            style={{
-              padding: "4px 8px",
-              border: "1.5px solid #E8E8E8", borderRadius: "7px",
-              fontSize: "11px", outline: "none", color: "#666", background: "white",
-              transition: "border-color 0.2s",
-            }}
-            onFocus={e => e.target.style.borderColor = "#2D7A5E"}
-            onBlur={e => { e.target.style.borderColor = "#E8E8E8"; if (!input) setShowProjectInput(false); }}
-          />
+          <div style={{ position: "relative" }}>
+            {/* 선택된 태그 칩 */}
+            {selectedProjects.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "3px", marginBottom: "4px" }}>
+                {selectedProjects.map(p => {
+                  const s = getTagStyle(p);
+                  return (
+                    <span key={p} onClick={() => toggleProject(p)} style={{
+                      padding: "2px 7px", borderRadius: "12px",
+                      background: s.accent, color: "white",
+                      fontSize: "10px", fontWeight: 600, cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: "3px",
+                      transition: "opacity 0.15s",
+                    }}>
+                      #{p} <span style={{ opacity: 0.8, fontSize: "11px" }}>×</span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* 입력창 */}
+            <input
+              value={projectInput}
+              onChange={e => { setProjectInput(e.target.value); setShowDropdown(true); }}
+              onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleAdd(); } }}
+              onFocus={() => setShowDropdown(true)}
+              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+              placeholder={selectedProjects.length > 0 ? "추가 태그..." : "#프로젝트 선택 또는 입력"}
+              style={{
+                width: "100%", padding: "5px 8px",
+                border: "1.5px solid #2D7A5E", borderRadius: "7px",
+                fontSize: "11px", outline: "none", color: "#333", background: "white",
+              }}
+            />
+
+            {/* 드롭다운 */}
+            {showDropdown && allProjects.length > 0 && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
+                background: "white", borderRadius: "9px",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
+                border: "1.5px solid #EEEEEE",
+                zIndex: 999, overflow: "hidden",
+                maxHeight: "160px", overflowY: "auto",
+              }}>
+                {allProjects
+                  .filter(p => !projectInput || p.toLowerCase().includes(projectInput.replace(/^#/, "").toLowerCase()))
+                  .map(p => {
+                    const s = getTagStyle(p);
+                    const selected = selectedProjects.includes(p);
+                    return (
+                      <div key={p}
+                        onMouseDown={e => { e.preventDefault(); toggleProject(p); setProjectInput(""); }}
+                        style={{
+                          padding: "7px 10px", cursor: "pointer",
+                          display: "flex", alignItems: "center", gap: "8px",
+                          background: selected ? s.bg : "white",
+                          transition: "background 0.15s",
+                        }}
+                        onMouseEnter={e => { if (!selected) e.currentTarget.style.background = "#F8F8F8"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = selected ? s.bg : "white"; }}
+                      >
+                        <div style={{
+                          width: "14px", height: "14px", borderRadius: "4px", flexShrink: 0,
+                          border: `2px solid ${s.accent}`,
+                          background: selected ? s.accent : "white",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          transition: "all 0.15s",
+                        }}>
+                          {selected && (
+                            <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+                              <path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
+                        </div>
+                        <span style={{ fontSize: "11.5px", color: s.accent, fontWeight: 600 }}>#{p}</span>
+                      </div>
+                    );
+                  })}
+                {allProjects.filter(p => !projectInput || p.toLowerCase().includes(projectInput.replace(/^#/, "").toLowerCase())).length === 0 && projectInput && (
+                  <div style={{ padding: "7px 10px", fontSize: "11px", color: "#AAAAAA" }}>
+                    "{projectInput.replace(/^#/, "")}" 새 태그로 추가됩니다
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -595,6 +680,7 @@ export default function WeeklyPlanner() {
                       onAdd={handleAdd}
                       onCarryOver={handleCarryOver}
                       activeFilter={activeFilter}
+                      allProjects={allProjects}
                     />
                   );
                 })}

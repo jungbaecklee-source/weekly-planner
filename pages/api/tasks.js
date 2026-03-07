@@ -18,6 +18,7 @@ export default async function handler(req, res) {
         day: page.properties["요일"]?.select?.name || null,
         project: page.properties["프로젝트"]?.multi_select?.map((t) => t.name) || [],
         done: page.properties["완료"]?.checkbox || false,
+        concern: page.properties["고민"]?.checkbox || false,
       }));
 
       res.status(200).json(tasks);
@@ -28,7 +29,7 @@ export default async function handler(req, res) {
   }
 
   else if (req.method === "POST") {
-    const { text, date, day, project } = req.body;
+    const { text, date, day, project, concern } = req.body;
     try {
       const page = await notion.pages.create({
         parent: { database_id: DATABASE_ID },
@@ -40,6 +41,7 @@ export default async function handler(req, res) {
             multi_select: (project || []).map((name) => ({ name })),
           },
           완료: { checkbox: false },
+          고민: { checkbox: concern || false },
         },
       });
       res.status(200).json({ id: page.id });

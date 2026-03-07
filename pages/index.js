@@ -195,6 +195,8 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
   const [selectedProjects, setSelectedProjects] = useState([]);
   const [newTaskIds, setNewTaskIds] = useState(new Set());
   const inputRef = useRef();
+  const projectInputRef = useRef();
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
   const prevTaskIds = useRef(new Set(tasks.map(t => t.id)));
 
   const today = new Date();
@@ -355,10 +357,17 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
 
             {/* 입력창 */}
             <input
+              ref={projectInputRef}
               value={projectInput}
               onChange={e => { setProjectInput(e.target.value); setShowDropdown(true); }}
               onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleAdd(); } }}
-              onFocus={() => setShowDropdown(true)}
+              onFocus={() => {
+                setShowDropdown(true);
+                if (projectInputRef.current) {
+                  const r = projectInputRef.current.getBoundingClientRect();
+                  setDropdownPos({ top: r.bottom + 4, left: r.left, width: r.width });
+                }
+              }}
               onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
               placeholder={selectedProjects.length > 0 ? "추가 태그..." : "#프로젝트 선택 또는 입력"}
               style={{
@@ -371,7 +380,7 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
             {/* 드롭다운 */}
             {showDropdown && allProjects.length > 0 && (
               <div style={{
-                position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
+                position: "fixed", top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width,
                 background: "white", borderRadius: "9px",
                 boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
                 border: "1.5px solid #EEEEEE",

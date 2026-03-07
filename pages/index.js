@@ -224,7 +224,7 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
     setInput("");
     setProjectInput("");
     setShowProjectInput(false);
-    inputRef.current?.focus();
+    setTimeout(() => inputRef.current?.focus(), 50);
   };
 
   return (
@@ -293,7 +293,7 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
         <div style={{ display: "flex", gap: "5px" }}>
           <input ref={inputRef} value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAdd(); } }}
+            onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleAdd(); } }}
             onFocus={() => setShowProjectInput(true)}
             placeholder="추가"
             style={{
@@ -315,7 +315,7 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
           <input
             value={projectInput}
             onChange={e => setProjectInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAdd(); } }}
+            onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleAdd(); } }}
             placeholder="#프로젝트 (쉼표로 구분)"
             style={{
               padding: "4px 8px",

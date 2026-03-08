@@ -318,12 +318,6 @@ function RepeatModal({ onClose, onSave, allProjects }) {
         )}
 
         {/* 프로젝트 태그 */}
-        <RepeatTemplatesPanel
-          templates={repeatTemplates}
-          onDelete={handleDelete}
-          allProjects={allProjects}
-        />
-
         {allProjects.length > 0 && (
           <div style={{ marginBottom: "20px" }}>
             <label style={{ fontSize: "11px", fontWeight: 600, color: "#888", letterSpacing: "0.5px", display: "block", marginBottom: "8px" }}>프로젝트 태그</label>
@@ -436,9 +430,9 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
       border: isToday ? "2px solid #2D7A5E" : hasPastUndone ? "2px solid #FFCDD2" : "2px solid transparent",
       boxShadow: isToday ? "0 4px 20px rgba(45,122,94,0.13)" : "0 1px 3px rgba(0,0,0,0.04)",
       display: "flex", flexDirection: "column", gap: "8px",
-      minWidth: isMobile ? "unset" : "145px",
+      minWidth: isMobile ? "unset" : "140px",
+      maxWidth: isMobile ? "100%" : "none",
       flex: 1,
-      width: isMobile ? "100%" : "145px",
       opacity: isPast && !hasPastUndone ? 0.65 : 1,
       transition: "all 0.3s ease",
     }}>
@@ -515,11 +509,12 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleAdd(); } }}
             onFocus={() => setShowProjectInput(true)}
+            onBlur={() => setTimeout(() => { setShowProjectInput(false); setShowDropdown(false); }, 200)}
             placeholder="추가"
             style={{
               flex: 1, padding: isMobile ? "9px 12px" : "5px 8px",
               border: "1.5px solid #E8E8E8", borderRadius: "7px",
-              fontSize: "16px", outline: "none", color: "#333", background: "white",
+              fontSize: isMobile ? "16px" : "12px", outline: "none", color: "#333", background: "white",
               transition: "border-color 0.2s",
             }}
             onBlur={e => e.target.style.borderColor = "#E8E8E8"}
@@ -541,7 +536,7 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
             cursor: "pointer", letterSpacing: "0.5px",
           }}>+ 추가</button>
         )}
-        {(showProjectInput || isMobile) && (
+        {showProjectInput && (
           <div style={{ position: "relative", zIndex: 100 }}>
             {/* 선택된 태그 칩 */}
             {selectedProjects.length > 0 && (
@@ -581,7 +576,7 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
               style={{
                 width: "100%", padding: "5px 8px",
                 border: "1.5px solid #2D7A5E", borderRadius: "7px",
-                fontSize: "16px", outline: "none", color: "#333", background: "white",
+                fontSize: isMobile ? "16px" : "12px", outline: "none", color: "#333", background: "white",
               }}
             />
 
@@ -869,7 +864,7 @@ export default function WeeklyPlanner() {
             <p style={{ fontSize: "12px", color: "#AAAAAA", margin: "4px 0 0" }}>{rangeLabel}</p>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
 
             {/* 미완료 알림 뱃지 */}
             {pastUndoneCount > 0 && (

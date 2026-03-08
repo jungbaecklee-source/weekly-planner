@@ -2,16 +2,60 @@ import { Client } from "@notionhq/client";
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
 const DATABASE_ID = process.env.NOTION_DATABASE_ID;
+const DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+
+function dateKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function dayLabel(d) {
+  return DAYS[d.getDay() === 0 ? 6 : d.getDay() - 1];
+}
+
+// 반복 템플릿에서 앞으로 4주치 날짜 목록 생성
+function getRepeatDates(template) {
+  const results = [];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const end = new Date(today); end.setDate(end.getDate() + 28);
+
+  for (let d = new Date(today); d <= end; d.setDate(d.getDate() + 1)) {
+    const cur = new Date(d);
+    const dow = cur.getDay() === 0 ? 6 : cur.getDay() - 1; // 0=월 ... 6=일
+    const dom = cur.getDate();
+    const label = DAYS[dow];
+
+    if (template.repeat === "매일") {
+      results.push({ date: dateKey(cur), day: label });
+    } else if (template.repeat === "매주전체" && dow <= 4) {
+      results.push({ date: dateKey(cur), day: label });
+    } else if (template.repeat === "매주" && template.repeatDays?.includes(label)) {
+      results.push({ date: dateKey(cur), day: label });
+    } else if (template.repeat === "매달" && template.repeatDays?.map(Number).includes(dom)) {
+      results.push({ date: dateKey(cur), day: label });
+    }
+  }
+  return results;
+}
 
 export default async function handler(req, res) {
+
+  // ── GET ──────────────────────────────────────────────────
   if (req.method === "GET") {
     try {
-      const response = await notion.databases.query({
-        database_id: DATABASE_ID,
-        sorts: [{ property: "날짜", direction: "ascending" }],
-      });
+      // 전체 항목 가져오기 (페이지네이션 처리)
+      let allResults = [];
+      let cursor = undefined;
+      do {
+        const response = await notion.databases.query({
+          database_id: DATABASE_ID,
+          sorts: [{ property: "날짜", direction: "ascending" }],
+          start_cursor: cursor,
+          page_size: 100,
+        });
+        allResults = allResults.concat(response.results);
+        cursor = response.has_more ? response.next_cursor : undefined;
+      } while (cursor);
 
-      const tasks = response.results.map((page) => ({
+      const tasks = allResults.map((page) => ({
         id: page.id,
         text: page.properties["이름"]?.title?.[0]?.plain_text || "",
         date: page.properties["날짜"]?.date?.start || null,
@@ -19,30 +63,80 @@ export default async function handler(req, res) {
         project: page.properties["프로젝트"]?.multi_select?.map((t) => t.name) || [],
         done: page.properties["완료"]?.checkbox || false,
         concern: page.properties["고민"]?.checkbox || false,
+        repeat: page.properties["반복"]?.select?.name || null,
+        repeatDays: page.properties["반복요일"]?.multi_select?.map(t => t.name) || [],
       }));
 
-      res.status(200).json(tasks);
+      // 반복 템플릿 = 반복 속성이 있고 날짜가 없는 항목
+      const templates = tasks.filter(t => t.repeat && !t.date);
+      // 일반 항목
+      const regular = tasks.filter(t => !t.repeat || t.date);
+
+      // 반복 항목 자동 생성 (중복 방지)
+      const existingKeys = new Set(
+        regular.filter(t => t.date).map(t => `${t.text}__${t.date}`)
+      );
+
+      const toCreate = [];
+      for (const tmpl of templates) {
+        const dates = getRepeatDates(tmpl);
+        for (const { date, day } of dates) {
+          const key = `${tmpl.text}__${date}`;
+          if (!existingKeys.has(key)) {
+            toCreate.push({ tmpl, date, day });
+            existingKeys.add(key); // 중복 방지
+          }
+        }
+      }
+
+      // 병렬로 생성 (최대 10개씩 배치)
+      const created = [];
+      for (let i = 0; i < toCreate.length; i += 10) {
+        const batch = toCreate.slice(i, i + 10);
+        const results = await Promise.all(batch.map(({ tmpl, date, day }) =>
+          notion.pages.create({
+            parent: { database_id: DATABASE_ID },
+            properties: {
+              이름: { title: [{ text: { content: tmpl.text } }] },
+              날짜: { date: { start: date } },
+              요일: { select: { name: day } },
+              프로젝트: { multi_select: (tmpl.project || []).map(name => ({ name })) },
+              완료: { checkbox: false },
+            },
+          }).then(page => ({
+            id: page.id, text: tmpl.text, date, day,
+            project: tmpl.project || [], done: false,
+            concern: false, repeat: null, repeatDays: [],
+          }))
+        ));
+        created.push(...results);
+      }
+
+      res.status(200).json([...regular, ...created]);
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Notion API 오류" });
     }
   }
 
+  // ── POST ─────────────────────────────────────────────────
   else if (req.method === "POST") {
-    const { text, date, day, project, concern } = req.body;
+    const { text, date, day, project, concern, repeat, repeatDays } = req.body;
     try {
+      const props = {
+        이름: { title: [{ text: { content: text } }] },
+        프로젝트: { multi_select: (project || []).map((name) => ({ name })) },
+        완료: { checkbox: false },
+        고민: { checkbox: concern || false },
+      };
+      if (date) props["날짜"] = { date: { start: date } };
+      if (day)  props["요일"] = { select: { name: day } };
+      if (repeat) props["반복"] = { select: { name: repeat } };
+      if (repeatDays?.length) props["반복요일"] = { multi_select: repeatDays.map(name => ({ name })) };
+
       const page = await notion.pages.create({
         parent: { database_id: DATABASE_ID },
-        properties: {
-          이름: { title: [{ text: { content: text } }] },
-          날짜: date ? { date: { start: date } } : {},
-          요일: day ? { select: { name: day } } : {},
-          프로젝트: {
-            multi_select: (project || []).map((name) => ({ name })),
-          },
-          완료: { checkbox: false },
-          고민: { checkbox: concern || false },
-        },
+        properties: props,
       });
       res.status(200).json({ id: page.id });
     } catch (error) {
@@ -51,6 +145,7 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── PATCH ────────────────────────────────────────────────
   else if (req.method === "PATCH") {
     const { id, done, date, day } = req.body;
     try {
@@ -66,13 +161,11 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── DELETE ───────────────────────────────────────────────
   else if (req.method === "DELETE") {
     const { id } = req.body;
     try {
-      await notion.pages.update({
-        page_id: id,
-        archived: true,
-      });
+      await notion.pages.update({ page_id: id, archived: true });
       res.status(200).json({ ok: true });
     } catch (error) {
       console.error(error);

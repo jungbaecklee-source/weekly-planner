@@ -197,6 +197,172 @@ function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew }) 
   );
 }
 
+// ── RepeatModal ───────────────────────────────────────────
+function RepeatModal({ onClose, onSave, allProjects }) {
+  const [text, setText] = useState("");
+  const [repeat, setRepeat] = useState("매일");
+  const [repeatDays, setRepeatDays] = useState([]);
+  const [selectedProjects, setSelectedProjects] = useState([]);
+  const [monthDay, setMonthDay] = useState("1");
+
+  const DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+
+  const toggleDay = (d) => setRepeatDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]);
+  const toggleProject = (p) => setSelectedProjects(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+
+  const handleSave = () => {
+    if (!text.trim()) return;
+    const days = repeat === "매달" ? [monthDay] : repeat === "매주" ? repeatDays : [];
+    onSave({ text: text.trim(), repeat, repeatDays: days, project: selectedProjects });
+    onClose();
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
+      zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "20px",
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: "white", borderRadius: "18px", padding: "26px 24px",
+        width: "100%", maxWidth: "400px",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "18px" }}>🔁</span>
+            <span style={{ fontSize: "16px", fontWeight: 700, color: "#222" }}>반복 할 일 설정</span>
+          </div>
+          <button onClick={onClose} style={{
+            background: "none", border: "none", fontSize: "20px",
+            color: "#AAAAAA", cursor: "pointer", lineHeight: 1, padding: 0,
+          }}>×</button>
+        </div>
+
+        {/* 할 일 이름 */}
+        <div style={{ marginBottom: "16px" }}>
+          <label style={{ fontSize: "11px", fontWeight: 600, color: "#888", letterSpacing: "0.5px", display: "block", marginBottom: "6px" }}>할 일</label>
+          <input
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder="반복할 내용 입력"
+            autoFocus
+            style={{
+              width: "100%", padding: "10px 14px",
+              border: "1.5px solid #E8E8E8", borderRadius: "10px",
+              fontSize: "15px", outline: "none", color: "#333",
+            }}
+            onFocus={e => e.target.style.borderColor = "#2D7A5E"}
+            onBlur={e => e.target.style.borderColor = "#E8E8E8"}
+          />
+        </div>
+
+        {/* 반복 유형 */}
+        <div style={{ marginBottom: "16px" }}>
+          <label style={{ fontSize: "11px", fontWeight: 600, color: "#888", letterSpacing: "0.5px", display: "block", marginBottom: "8px" }}>반복 유형</label>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            {["매일", "매주", "매달", "매주전체"].map(r => (
+              <button key={r} onClick={() => { setRepeat(r); setRepeatDays([]); }} style={{
+                padding: "6px 14px", borderRadius: "20px", fontSize: "13px", fontWeight: 600,
+                cursor: "pointer", border: "1.5px solid",
+                borderColor: repeat === r ? "#2D7A5E" : "#E8E8E8",
+                background: repeat === r ? "#2D7A5E" : "white",
+                color: repeat === r ? "white" : "#555",
+                transition: "all 0.15s",
+              }}>
+                {r === "매주전체" ? "평일 매일" : r}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 매주 — 요일 선택 */}
+        {repeat === "매주" && (
+          <div style={{ marginBottom: "16px" }}>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#888", letterSpacing: "0.5px", display: "block", marginBottom: "8px" }}>반복 요일</label>
+            <div style={{ display: "flex", gap: "6px" }}>
+              {DAYS.map(d => (
+                <button key={d} onClick={() => toggleDay(d)} style={{
+                  width: "36px", height: "36px", borderRadius: "50%", fontSize: "12px", fontWeight: 600,
+                  cursor: "pointer", border: "1.5px solid",
+                  borderColor: repeatDays.includes(d) ? "#2D7A5E" : "#E8E8E8",
+                  background: repeatDays.includes(d) ? "#2D7A5E" : "white",
+                  color: repeatDays.includes(d) ? "white" : "#555",
+                  transition: "all 0.15s",
+                }}>{d}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 매달 — 날짜 입력 */}
+        {repeat === "매달" && (
+          <div style={{ marginBottom: "16px" }}>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#888", letterSpacing: "0.5px", display: "block", marginBottom: "8px" }}>매달 몇 일?</label>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <input
+                type="number" min="1" max="31"
+                value={monthDay}
+                onChange={e => setMonthDay(e.target.value)}
+                style={{
+                  width: "70px", padding: "8px 12px",
+                  border: "1.5px solid #E8E8E8", borderRadius: "10px",
+                  fontSize: "15px", outline: "none", textAlign: "center",
+                }}
+                onFocus={e => e.target.style.borderColor = "#2D7A5E"}
+                onBlur={e => e.target.style.borderColor = "#E8E8E8"}
+              />
+              <span style={{ fontSize: "13px", color: "#888" }}>일마다 반복</span>
+            </div>
+          </div>
+        )}
+
+        {/* 프로젝트 태그 */}
+        <RepeatTemplatesPanel
+          templates={repeatTemplates}
+          onDelete={handleDelete}
+          allProjects={allProjects}
+        />
+
+        {allProjects.length > 0 && (
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#888", letterSpacing: "0.5px", display: "block", marginBottom: "8px" }}>프로젝트 태그</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+              {allProjects.map(p => {
+                const s = getTagStyle(p);
+                const sel = selectedProjects.includes(p);
+                return (
+                  <button key={p} onClick={() => toggleProject(p)} style={{
+                    padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: 600,
+                    cursor: "pointer", border: `1.5px solid ${s.accent}`,
+                    background: sel ? s.accent : s.bg,
+                    color: sel ? "white" : s.accent,
+                    transition: "all 0.15s",
+                  }}>#{p}</button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 저장 버튼 */}
+        <button
+          onClick={handleSave}
+          disabled={!text.trim() || (repeat === "매주" && repeatDays.length === 0)}
+          style={{
+            width: "100%", padding: "13px",
+            background: text.trim() && (repeat !== "매주" || repeatDays.length > 0) ? "#2D7A5E" : "#CCCCCC",
+            color: "white", border: "none", borderRadius: "12px",
+            fontSize: "15px", fontWeight: 700, cursor: text.trim() ? "pointer" : "not-allowed",
+            transition: "background 0.2s",
+          }}>
+          반복 할 일 저장
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── DayColumn ─────────────────────────────────────────────
 function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOver, activeFilter, allProjects, isMobile }) {
   const [input, setInput] = useState("");
@@ -481,6 +647,70 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
   );
 }
 
+// ── RepeatTemplates Panel ─────────────────────────────────
+function RepeatTemplatesPanel({ templates, onDelete, allProjects }) {
+  const [open, setOpen] = useState(false);
+  if (templates.length === 0) return null;
+
+  return (
+    <div style={{
+      background: "white", borderRadius: "14px", padding: "14px 16px",
+      border: "1.5px solid #E8E8E8", marginBottom: "16px",
+    }}>
+      <div onClick={() => setOpen(o => !o)} style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "14px" }}>🔁</span>
+          <span style={{ fontSize: "13px", fontWeight: 700, color: "#333" }}>반복 설정 중인 할 일</span>
+          <span style={{
+            background: "#F1F3F0", borderRadius: "10px",
+            padding: "1px 8px", fontSize: "11px", color: "#888", fontWeight: 600,
+          }}>{templates.length}</span>
+        </div>
+        <span style={{ fontSize: "16px", color: "#AAAAAA", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>⌃</span>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+          {templates.map(t => {
+            const repeatLabel = t.repeat === "매주전체" ? "평일 매일"
+              : t.repeat === "매주" ? `매주 ${t.repeatDays?.join(", ")}`
+              : t.repeat === "매달" ? `매달 ${t.repeatDays?.[0]}일`
+              : t.repeat;
+            return (
+              <div key={t.id} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "10px 12px", background: "#FAFAFA", borderRadius: "10px",
+                border: "1.5px solid #EEEEEE",
+              }}>
+                <div>
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: "#333" }}>{t.text}</div>
+                  <div style={{ fontSize: "11px", color: "#2D7A5E", marginTop: "2px", fontWeight: 600 }}>🔁 {repeatLabel}</div>
+                  {t.project?.length > 0 && (
+                    <div style={{ marginTop: "4px" }}>
+                      {t.project.map(p => (
+                        <span key={p} style={{ color: getTagStyle(p).accent, fontSize: "11px", fontWeight: 600, marginRight: "6px" }}>#{p}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => onDelete(t.id)} style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  color: "#CCCCCC", fontSize: "18px", padding: "0 4px", lineHeight: 1,
+                }}
+                onMouseEnter={e => e.target.style.color = "#FF6B6B"}
+                onMouseLeave={e => e.target.style.color = "#CCCCCC"}
+                >×</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────
 export default function WeeklyPlanner() {
   const [weekOffset, setWeekOffset] = useState(0);
@@ -558,6 +788,20 @@ export default function WeeklyPlanner() {
     });
   };
 
+  const handleAddRepeat = async ({ text, repeat, repeatDays, project }) => {
+    const tempId = `temp-${Date.now()}`;
+    setTasks(p => [...p, { id: tempId, text, repeat, repeatDays, project, done: false, concern: false, date: null, day: null }]);
+    const res = await fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, repeat, repeatDays, project }),
+    });
+    const { id } = await res.json();
+    setTasks(p => p.map(t => t.id === tempId ? { ...t, id } : t));
+    // 반복 항목 즉시 생성 반영
+    setTimeout(() => fetchTasks(), 500);
+  };
+
   // 이월: 오늘 날짜로 날짜 변경
   const handleCarryOver = async (id) => {
     const todayKey = getTodayKey();
@@ -571,7 +815,8 @@ export default function WeeklyPlanner() {
   };
 
   const concerns = tasks.filter(t => t.concern);
-  const regularTasks = tasks.filter(t => !t.concern);
+  const repeatTemplates = tasks.filter(t => t.repeat && !t.date && !t.concern);
+  const regularTasks = tasks.filter(t => !t.concern && !(t.repeat && !t.date));
   const allProjects = [...new Set(regularTasks.flatMap(t => t.project || []))].sort();
   const isMobile = useIsMobile();
   const rangeLabel  = `${dates[0].getMonth()+1}월 ${dates[0].getDate()}일 — ${dates[dates.length-1].getMonth()+1}월 ${dates[dates.length-1].getDate()}일`;
@@ -592,6 +837,7 @@ export default function WeeklyPlanner() {
 
   const [concernOpen, setConcernOpen] = useState(false);
   const [concernInput, setConcernInput] = useState("");
+  const [showRepeatModal, setShowRepeatModal] = useState(false);
 
   return (
     <div style={{ minHeight: "100vh", background: "#F1F3F0",
@@ -661,6 +907,13 @@ export default function WeeklyPlanner() {
               ))}
             </div>
 
+            <button onClick={() => setShowRepeatModal(true)} style={{
+              background: "white", border: "1.5px solid #E2E2E2",
+              borderRadius: "8px", width: "32px", height: "32px",
+              cursor: "pointer", fontSize: "14px",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }} title="반복 할 일 설정">🔁</button>
+
             <button onClick={fetchTasks} style={{
               background: "white", border: "1.5px solid #E2E2E2",
               borderRadius: "8px", width: "32px", height: "32px",
@@ -698,6 +951,12 @@ export default function WeeklyPlanner() {
         </div>
 
         {/* ── TAG FILTER ── */}
+        <RepeatTemplatesPanel
+          templates={repeatTemplates}
+          onDelete={handleDelete}
+          allProjects={allProjects}
+        />
+
         {allProjects.length > 0 && (
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "16px" }}>
             {[{ tag: null, label: "전체" }, ...allProjects.map(t => ({ tag: t, label: `#${t}` }))].map(({ tag, label }) => {
@@ -778,6 +1037,15 @@ export default function WeeklyPlanner() {
           ‹ › 버튼으로 4주씩 이동
         </div>
       </div>
+
+      {/* ── 반복 모달 ── */}
+      {showRepeatModal && (
+        <RepeatModal
+          onClose={() => setShowRepeatModal(false)}
+          onSave={handleAddRepeat}
+          allProjects={allProjects}
+        />
+      )}
 
       {/* ── 하단 고민 패널 ── */}
       <div style={{

@@ -11,7 +11,6 @@ function dayLabel(d) {
   return DAYS[d.getDay() === 0 ? 6 : d.getDay() - 1];
 }
 
-// 반복 템플릿에서 앞으로 4주치 날짜 목록 생성
 function getRepeatDates(template) {
   const results = [];
   const today = new Date(); today.setHours(0,0,0,0);
@@ -19,7 +18,7 @@ function getRepeatDates(template) {
 
   for (let d = new Date(today); d <= end; d.setDate(d.getDate() + 1)) {
     const cur = new Date(d);
-    const dow = cur.getDay() === 0 ? 6 : cur.getDay() - 1; // 0=월 ... 6=일
+    const dow = cur.getDay() === 0 ? 6 : cur.getDay() - 1;
     const dom = cur.getDate();
     const label = DAYS[dow];
 
@@ -36,24 +35,28 @@ function getRepeatDates(template) {
   return results;
 }
 
+async function fetchAllPages() {
+  let allResults = [];
+  let cursor = undefined;
+  do {
+    const response = await notion.databases.query({
+      database_id: DATABASE_ID,
+      // sort 없이 가져와서 날짜 없는 항목(고민, 반복템플릿)도 누락 없이 수집
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    allResults = allResults.concat(response.results);
+    cursor = response.has_more ? response.next_cursor : undefined;
+  } while (cursor);
+  return allResults;
+}
+
 export default async function handler(req, res) {
 
   // ── GET ──────────────────────────────────────────────────
   if (req.method === "GET") {
     try {
-      // 전체 항목 가져오기 (페이지네이션 처리)
-      let allResults = [];
-      let cursor = undefined;
-      do {
-        const response = await notion.databases.query({
-          database_id: DATABASE_ID,
-          sorts: [{ property: "날짜", direction: "ascending" }],
-          start_cursor: cursor,
-          page_size: 100,
-        });
-        allResults = allResults.concat(response.results);
-        cursor = response.has_more ? response.next_cursor : undefined;
-      } while (cursor);
+      const allResults = await fetchAllPages();
 
       const tasks = allResults.map((page) => ({
         id: page.id,
@@ -67,12 +70,16 @@ export default async function handler(req, res) {
         repeatDays: page.properties["반복요일"]?.multi_select?.map(t => t.name) || [],
       }));
 
-      // 반복 템플릿 = 반복 속성이 있고 날짜가 없는 항목
-      const templates = tasks.filter(t => t.repeat && !t.date);
-      // 일반 항목
-      const regular = tasks.filter(t => !t.repeat || t.date);
+      // 고민 항목 — concern: true (별도 보존)
+      const concerns = tasks.filter(t => t.concern);
 
-      // 반복 항목 자동 생성 (중복 방지)
+      // 반복 템플릿 — 반복 속성 있고 날짜 없는 항목
+      const templates = tasks.filter(t => t.repeat && !t.date && !t.concern);
+
+      // 일반 항목 — 나머지
+      const regular = tasks.filter(t => !t.concern && !(t.repeat && !t.date));
+
+      // 반복 항목 중복 방지 키
       const existingKeys = new Set(
         regular.filter(t => t.date).map(t => `${t.text}__${t.date}`)
       );
@@ -84,12 +91,12 @@ export default async function handler(req, res) {
           const key = `${tmpl.text}__${date}`;
           if (!existingKeys.has(key)) {
             toCreate.push({ tmpl, date, day });
-            existingKeys.add(key); // 중복 방지
+            existingKeys.add(key);
           }
         }
       }
 
-      // 병렬로 생성 (최대 10개씩 배치)
+      // 반복 항목 배치 생성
       const created = [];
       for (let i = 0; i < toCreate.length; i += 10) {
         const batch = toCreate.slice(i, i + 10);
@@ -112,7 +119,8 @@ export default async function handler(req, res) {
         created.push(...results);
       }
 
-      res.status(200).json([...regular, ...created]);
+      // 고민 + 일반 + 새로 생성된 반복 항목 모두 반환
+      res.status(200).json([...concerns, ...regular, ...created]);
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Notion API 오류" });
@@ -127,7 +135,7 @@ export default async function handler(req, res) {
         이름: { title: [{ text: { content: text } }] },
         프로젝트: { multi_select: (project || []).map((name) => ({ name })) },
         완료: { checkbox: false },
-        고민: { checkbox: concern || false },
+        고민: { checkbox: concern === true },
       };
       if (date) props["날짜"] = { date: { start: date } };
       if (day)  props["요일"] = { select: { name: day } };
@@ -141,7 +149,7 @@ export default async function handler(req, res) {
       res.status(200).json({ id: page.id });
     } catch (error) {
       console.error(error);
-      res.status(500).json({ error: "생성 오류" });
+      res.status(500).json({ error: "생성 오류: " + error.message });
     }
   }
 

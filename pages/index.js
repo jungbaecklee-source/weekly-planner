@@ -198,7 +198,7 @@ function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew }) 
 }
 
 // ── DayColumn ─────────────────────────────────────────────
-function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOver, activeFilter, allProjects }) {
+function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOver, activeFilter, allProjects, isMobile }) {
   const [input, setInput] = useState("");
   const [projectInput, setProjectInput] = useState("");
   const [showProjectInput, setShowProjectInput] = useState(false);
@@ -260,36 +260,57 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
     );
   };
 
+  // 모바일에서 빈 과거 날짜는 숨김
+  if (isMobile && isPast && filtered.length === 0) return null;
+
   return (
     <div style={{
       background: isToday ? "white" : "#FAFAFA",
-      borderRadius: "14px", padding: "13px 11px",
+      borderRadius: "14px", padding: isMobile ? "12px 14px" : "13px 11px",
       border: isToday ? "2px solid #2D7A5E" : hasPastUndone ? "2px solid #FFCDD2" : "2px solid transparent",
       boxShadow: isToday ? "0 4px 20px rgba(45,122,94,0.13)" : "0 1px 3px rgba(0,0,0,0.04)",
       display: "flex", flexDirection: "column", gap: "8px",
-      minWidth: "145px", flex: 1, width: "145px",
+      minWidth: isMobile ? "unset" : "145px",
+      flex: 1,
+      width: isMobile ? "100%" : "145px",
       opacity: isPast && !hasPastUndone ? 0.65 : 1,
       transition: "all 0.3s ease",
     }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <div>
-          <div style={{ fontSize: "18px", fontWeight: 700, lineHeight: 1,
-            color: isToday ? "#2D7A5E" : isPast ? (hasPastUndone ? "#E57373" : "#CCCCCC") : "#4A4A4A",
-            letterSpacing: "-0.2px" }}>{dayLabel}</div>
-          <div style={{ fontSize: "11px", marginTop: "3px",
-            color: isToday ? "#2D7A5E" : hasPastUndone ? "#E57373" : "#BBBBBB",
-            fontWeight: isToday ? 600 : 400 }}>{fmt(date)}</div>
-          {isToday && (
-            <div style={{ fontSize: "8px", color: "#2D7A5E", fontWeight: 700,
-              letterSpacing: "1.2px", marginTop: "2px" }}>TODAY</div>
-          )}
-          {hasPastUndone && (
-            <div style={{ fontSize: "8px", color: "#E57373", fontWeight: 700,
-              letterSpacing: "0.8px", marginTop: "2px" }}>미완료</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? "10px" : "0" }}>
+          {isMobile ? (
+            // 모바일: 요일 + 날짜 한 줄
+            <>
+              <div style={{ fontSize: "16px", fontWeight: 700,
+                color: isToday ? "#2D7A5E" : isPast ? (hasPastUndone ? "#E57373" : "#CCCCCC") : "#4A4A4A" }}>
+                {dayLabel}
+              </div>
+              <div style={{ fontSize: "12px",
+                color: isToday ? "#2D7A5E" : hasPastUndone ? "#E57373" : "#AAAAAA",
+                fontWeight: isToday ? 600 : 400 }}>{fmt(date)}</div>
+              {isToday && <div style={{ fontSize: "9px", color: "#2D7A5E", fontWeight: 700,
+                background: "#E8F4F0", borderRadius: "6px", padding: "1px 6px" }}>TODAY</div>}
+              {hasPastUndone && <div style={{ fontSize: "9px", color: "#E57373", fontWeight: 700,
+                background: "#FFF5F5", borderRadius: "6px", padding: "1px 6px" }}>미완료</div>}
+            </>
+          ) : (
+            // 데스크탑: 기존
+            <div>
+              <div style={{ fontSize: "18px", fontWeight: 700, lineHeight: 1,
+                color: isToday ? "#2D7A5E" : isPast ? (hasPastUndone ? "#E57373" : "#CCCCCC") : "#4A4A4A",
+                letterSpacing: "-0.2px" }}>{dayLabel}</div>
+              <div style={{ fontSize: "11px", marginTop: "3px",
+                color: isToday ? "#2D7A5E" : hasPastUndone ? "#E57373" : "#BBBBBB",
+                fontWeight: isToday ? 600 : 400 }}>{fmt(date)}</div>
+              {isToday && <div style={{ fontSize: "8px", color: "#2D7A5E", fontWeight: 700,
+                letterSpacing: "1.2px", marginTop: "2px" }}>TODAY</div>}
+              {hasPastUndone && <div style={{ fontSize: "8px", color: "#E57373", fontWeight: 700,
+                letterSpacing: "0.8px", marginTop: "2px" }}>미완료</div>}
+            </div>
           )}
         </div>
         {total > 0 && (
-          <span style={{ fontSize: "10.5px", color: hasPastUndone ? "#E57373" : "#BBBBBB", marginTop: "2px" }}>
+          <span style={{ fontSize: "10.5px", color: hasPastUndone ? "#E57373" : "#BBBBBB" }}>
             {done}/{total}
           </span>
         )}
@@ -344,8 +365,8 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
             alignItems: "center", justifyContent: "center", flexShrink: 0,
           }}>+</button>
         </div>
-        {showProjectInput && (
-          <div style={{ position: "relative" }}>
+        {(showProjectInput || isMobile) && (
+          <div style={{ position: "relative", zIndex: 100 }}>
             {/* 선택된 태그 칩 */}
             {selectedProjects.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "3px", marginBottom: "4px" }}>
@@ -391,7 +412,11 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
             {/* 드롭다운 */}
             {showDropdown && allProjects.length > 0 && (
               <div style={{
-                position: "fixed", top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width,
+                position: isMobile ? "absolute" : "fixed",
+                top: isMobile ? "calc(100% + 4px)" : dropdownPos.top,
+                left: isMobile ? 0 : dropdownPos.left,
+                right: isMobile ? 0 : "auto",
+                width: isMobile ? "auto" : dropdownPos.width,
                 background: "white", borderRadius: "9px",
                 boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
                 border: "1.5px solid #EEEEEE",
@@ -569,11 +594,7 @@ export default function WeeklyPlanner() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #CCC; border-radius: 4px; }
         button, input { font-family: 'Pretendard', -apple-system, sans-serif; }
-        @media (max-width: 767px) {
-          .week-grid { flex-direction: column !important; gap: 8px !important; }
-          .day-column { min-width: unset !important; width: 100% !important; }
-        }
-        @keyframes slideIn {
+@keyframes slideIn {
           from { opacity: 0; transform: translateY(-8px) scale(0.96); }
           to   { opacity: 1; transform: translateY(0) scale(1); }
         }
@@ -717,7 +738,7 @@ export default function WeeklyPlanner() {
                 <div style={{ flex: 1, height: "1px", background: "#E6E6E6" }} />
               </div>
 
-              <div className="week-grid" style={{ display: "flex", gap: "9px", overflowX: "auto", paddingBottom: "2px" }}>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? "8px" : "9px", overflowX: isMobile ? "visible" : "auto", paddingBottom: "2px" }}>
                 {weekDates.map((date, di) => {
                   const dk = dateKey(date);
                   return (
@@ -732,6 +753,7 @@ export default function WeeklyPlanner() {
                       onCarryOver={handleCarryOver}
                       activeFilter={activeFilter}
                       allProjects={allProjects}
+                      isMobile={isMobile}
                     />
                   );
                 })}

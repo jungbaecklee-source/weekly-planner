@@ -351,20 +351,30 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
             onFocus={() => setShowProjectInput(true)}
             placeholder="추가"
             style={{
-              flex: 1, padding: "5px 8px",
+              flex: 1, padding: isMobile ? "9px 12px" : "5px 8px",
               border: "1.5px solid #E8E8E8", borderRadius: "7px",
-              fontSize: "11.5px", outline: "none", color: "#333", background: "white",
+              fontSize: "16px", outline: "none", color: "#333", background: "white",
               transition: "border-color 0.2s",
             }}
             onBlur={e => e.target.style.borderColor = "#E8E8E8"}
           />
-          <button onClick={handleAdd} style={{
-            background: "#2D7A5E", color: "white", border: "none",
-            borderRadius: "7px", width: "26px", height: "26px",
-            cursor: "pointer", fontSize: "15px", display: "flex",
-            alignItems: "center", justifyContent: "center", flexShrink: 0,
-          }}>+</button>
+          {!isMobile && (
+            <button onClick={handleAdd} style={{
+              background: "#2D7A5E", color: "white", border: "none",
+              borderRadius: "7px", width: "26px", height: "26px",
+              cursor: "pointer", fontSize: "15px", display: "flex",
+              alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>+</button>
+          )}
         </div>
+        {isMobile && input.trim() && (
+          <button onClick={handleAdd} style={{
+            width: "100%", padding: "10px",
+            background: "#2D7A5E", color: "white", border: "none",
+            borderRadius: "8px", fontSize: "15px", fontWeight: 700,
+            cursor: "pointer", letterSpacing: "0.5px",
+          }}>+ 추가</button>
+        )}
         {(showProjectInput || isMobile) && (
           <div style={{ position: "relative", zIndex: 100 }}>
             {/* 선택된 태그 칩 */}
@@ -405,7 +415,7 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
               style={{
                 width: "100%", padding: "5px 8px",
                 border: "1.5px solid #2D7A5E", borderRadius: "7px",
-                fontSize: "11px", outline: "none", color: "#333", background: "white",
+                fontSize: "16px", outline: "none", color: "#333", background: "white",
               }}
             />
 

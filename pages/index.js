@@ -93,7 +93,7 @@ function fmt(date) { return `${date.getMonth()+1}/${date.getDate()}`; }
 function getTodayKey() { return dateKey(new Date()); }
 
 // ── TaskItem ──────────────────────────────────────────────
-function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew }) {
+function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew, onDragStart, onDragEnd, isDragging }) {
   const primaryProject = task.project?.[0];
   const style = getTagStyle(primaryProject);
   const [visible, setVisible] = useState(false);
@@ -106,27 +106,37 @@ function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew }) 
 
   return (
     <div
+      draggable
       onClick={() => onToggle(task.id, !task.done)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onDragStart={e => {
+        e.stopPropagation();
+        e.dataTransfer.setData("taskId", task.id);
+        e.dataTransfer.effectAllowed = "move";
+        onDragStart?.(task.id);
+      }}
+      onDragEnd={() => onDragEnd?.()}
       style={{
         display: "flex", alignItems: "flex-start", gap: "8px",
         padding: "9px 10px", marginBottom: "5px", borderRadius: "9px",
         background: task.done ? "#F7F7F7" : isPastTask && !task.done ? "#FFF5F5" : style.bg,
         borderLeft: `3px solid ${task.done ? "#DDD" : isPastTask && !task.done ? "#E57373" : style.accent}`,
-        opacity: task.done ? 0.55 : visible ? 1 : 0,
+        opacity: isDragging ? 0.35 : task.done ? 0.55 : visible ? 1 : 0,
         transform: !visible
           ? "translateY(-6px) scale(0.97)"
-          : hovered && !task.done
-            ? "translateX(3px) scale(1.015)"
-            : "translateY(0) scale(1)",
-        boxShadow: hovered && !task.done
+          : isDragging
+            ? "scale(0.97)"
+            : hovered && !task.done
+              ? "translateX(3px) scale(1.015)"
+              : "translateY(0) scale(1)",
+        boxShadow: hovered && !task.done && !isDragging
           ? `2px 3px 10px ${style.light}88`
           : "none",
-        cursor: "pointer",
+        cursor: isDragging ? "grabbing" : "grab",
         transition: isNew
           ? "opacity 0.3s ease, transform 0.3s cubic-bezier(0.34,1.56,0.64,1)"
-          : "opacity 0.25s ease, transform 0.18s ease, box-shadow 0.18s ease, background 0.2s ease",
+          : "opacity 0.2s ease, transform 0.18s ease, box-shadow 0.18s ease",
       }}
     >
       {/* 미완료 과거 항목 경고 점 */}
@@ -358,13 +368,14 @@ function RepeatModal({ onClose, onSave, allProjects }) {
 }
 
 // ── DayColumn ─────────────────────────────────────────────
-function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOver, activeFilter, allProjects, isMobile }) {
+function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOver, activeFilter, allProjects, isMobile, onDrop, draggingId, onDragStart, onDragEnd }) {
   const [input, setInput] = useState("");
   const [projectInput, setProjectInput] = useState("");
   const [showProjectInput, setShowProjectInput] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedProjects, setSelectedProjects] = useState([]);
   const [newTaskIds, setNewTaskIds] = useState(new Set());
+  const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef();
   const projectInputRef = useRef();
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
@@ -424,17 +435,26 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
   if (isMobile && isPast && filtered.length === 0) return null;
 
   return (
-    <div style={{
-      background: isToday ? "white" : "#FAFAFA",
+    <div
+      onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={e => {
+        e.preventDefault();
+        setDragOver(false);
+        const taskId = e.dataTransfer.getData("taskId");
+        if (taskId) onDrop?.(taskId, dateKey(date), dayLabel);
+      }}
+      style={{
+      background: dragOver ? "#EEF7F3" : isToday ? "white" : "#FAFAFA",
       borderRadius: "14px", padding: isMobile ? "12px 14px" : "13px 11px",
-      border: isToday ? "2px solid #2D7A5E" : hasPastUndone ? "2px solid #FFCDD2" : "2px solid transparent",
+      border: dragOver ? "2px dashed #2D7A5E" : isToday ? "2px solid #2D7A5E" : hasPastUndone ? "2px solid #FFCDD2" : "2px solid transparent",
       boxShadow: isToday ? "0 4px 20px rgba(45,122,94,0.13)" : "0 1px 3px rgba(0,0,0,0.04)",
       display: "flex", flexDirection: "column", gap: "8px",
       minWidth: isMobile ? "unset" : "140px",
       maxWidth: isMobile ? "100%" : "none",
       flex: 1,
       opacity: isPast && !hasPastUndone ? 0.65 : 1,
-      transition: "all 0.3s ease",
+      transition: "background 0.15s ease, border 0.15s ease",
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: isMobile ? "10px" : "0" }}>
@@ -499,6 +519,9 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
             onCarryOver={onCarryOver}
             isPastTask={isPast}
             isNew={newTaskIds.has(t.id)}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            isDragging={draggingId === t.id}
           />
         ))}
       </div>
@@ -638,6 +661,51 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── WeekDropZone ──────────────────────────────────────────
+function WeekDropZone({ weekDates, monDate, isCurrentWeek, offsetLabel, draggingId, onDrop }) {
+  const [dragOver, setDragOver] = useState(false);
+  const DAYS_LABEL = ["월", "화", "수", "목", "금", "토", "일"];
+
+  // 드롭 시 해당 주 월요일로 이동
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const taskId = e.dataTransfer.getData("taskId");
+    if (!taskId) return;
+    // 해당 주의 오늘과 가장 가까운 평일로 이동 (기본: 월요일)
+    const targetDate = weekDates[0];
+    const dk = `${targetDate.getFullYear()}-${String(targetDate.getMonth()+1).padStart(2,"0")}-${String(targetDate.getDate()).padStart(2,"0")}`;
+    onDrop?.(taskId, dk, DAYS_LABEL[0]);
+  };
+
+  return (
+    <div
+      onDragOver={e => { if (draggingId) { e.preventDefault(); setDragOver(true); } }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+      style={{
+        display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px",
+        padding: dragOver ? "4px 8px" : "0",
+        borderRadius: "8px",
+        background: dragOver ? "#EEF7F3" : "transparent",
+        border: dragOver ? "2px dashed #2D7A5E" : "2px solid transparent",
+        transition: "all 0.15s ease",
+      }}
+    >
+      <span style={{
+        fontSize: "10px", fontWeight: 700, letterSpacing: "0.7px",
+        color: dragOver ? "#2D7A5E" : isCurrentWeek ? "#2D7A5E" : "#BBBBBB",
+        whiteSpace: "nowrap",
+        transition: "color 0.15s",
+      }}>
+        {dragOver ? "📅 여기에 놓기" : (isCurrentWeek ? `▶ ${offsetLabel}` : offsetLabel)}
+        {!dragOver && <>&ensp;{monDate.getMonth()+1}월 {monDate.getDate()}일 — {weekDates[6].getMonth()+1}월 {weekDates[6].getDate()}일</>}
+      </span>
+      <div style={{ flex: 1, height: "1px", background: dragOver ? "#A8D5C2" : "#E6E6E6", transition: "background 0.15s" }} />
     </div>
   );
 }
@@ -809,6 +877,20 @@ export default function WeeklyPlanner() {
     });
   };
 
+  const handleDrop = async (taskId, newDate, newDay) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    if (task.date === newDate) return; // 같은 날이면 무시 (순서 변경은 로컬만)
+    // 낙관적 업데이트
+    setTasks(p => p.map(t => t.id === taskId ? { ...t, date: newDate, day: newDay } : t));
+    setDraggingId(null);
+    await fetch("/api/tasks", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: taskId, date: newDate, day: newDay }),
+    });
+  };
+
   const concerns = tasks.filter(t => t.concern);
   const repeatTemplates = tasks.filter(t => t.repeat && !t.date && !t.concern);
   const regularTasks = tasks.filter(t => !t.concern && !(t.repeat && !t.date));
@@ -833,6 +915,7 @@ export default function WeeklyPlanner() {
   const [concernOpen, setConcernOpen] = useState(false);
   const [concernInput, setConcernInput] = useState("");
   const [showRepeatModal, setShowRepeatModal] = useState(false);
+  const [draggingId, setDraggingId] = useState(null);
 
   return (
     <div style={{ minHeight: "100vh", background: "#F1F3F0",
@@ -991,16 +1074,14 @@ export default function WeeklyPlanner() {
 
           return (
             <div key={week} style={{ marginBottom: "14px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
-                <span style={{
-                  fontSize: "10px", fontWeight: 700, letterSpacing: "0.7px",
-                  color: isCurrentWeek ? "#2D7A5E" : "#BBBBBB", whiteSpace: "nowrap",
-                }}>
-                  {isCurrentWeek ? `▶ ${offsetLabel}` : offsetLabel}
-                  &ensp;{monDate.getMonth()+1}월 {monDate.getDate()}일 — {weekDates[6].getMonth()+1}월 {weekDates[6].getDate()}일
-                </span>
-                <div style={{ flex: 1, height: "1px", background: "#E6E6E6" }} />
-              </div>
+              <WeekDropZone
+                weekDates={weekDates}
+                monDate={monDate}
+                isCurrentWeek={isCurrentWeek}
+                offsetLabel={offsetLabel}
+                draggingId={draggingId}
+                onDrop={handleDrop}
+              />
 
               <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? "8px" : "9px", overflowX: isMobile ? "visible" : "auto", paddingBottom: "2px" }}>
                 {weekDates.map((date, di) => {
@@ -1018,6 +1099,10 @@ export default function WeeklyPlanner() {
                       activeFilter={activeFilter}
                       allProjects={allProjects}
                       isMobile={isMobile}
+                      onDrop={handleDrop}
+                      draggingId={draggingId}
+                      onDragStart={id => setDraggingId(id)}
+                      onDragEnd={() => setDraggingId(null)}
                     />
                   );
                 })}

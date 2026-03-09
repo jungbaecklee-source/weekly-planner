@@ -207,6 +207,45 @@ function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew, on
   );
 }
 
+// ── useDragAutoScroll ─────────────────────────────────────
+function useDragAutoScroll(draggingId) {
+  useEffect(() => {
+    if (!draggingId) return;
+    const ZONE = 120;   // 화면 상하단 경계 감지 영역(px)
+    const SPEED = 12;   // 스크롤 속도(px)
+    let animId = null;
+
+    const onDragOver = (e) => {
+      const y = e.clientY;
+      const h = window.innerHeight;
+      cancelAnimationFrame(animId);
+
+      const scroll = () => {
+        if (y < ZONE) {
+          window.scrollBy(0, -SPEED);
+          animId = requestAnimationFrame(scroll);
+        } else if (y > h - ZONE) {
+          window.scrollBy(0, SPEED);
+          animId = requestAnimationFrame(scroll);
+        }
+      };
+      scroll();
+    };
+
+    const onDragEnd = () => cancelAnimationFrame(animId);
+
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragend", onDragEnd);
+    window.addEventListener("drop", onDragEnd);
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragend", onDragEnd);
+      window.removeEventListener("drop", onDragEnd);
+    };
+  }, [draggingId]);
+}
+
 // ── RepeatModal ───────────────────────────────────────────
 function RepeatModal({ onClose, onSave, allProjects }) {
   const [text, setText] = useState("");
@@ -877,6 +916,30 @@ export default function WeeklyPlanner() {
     });
   };
 
+  const handleBulkCarryOver = async () => {
+    const todayKey = getTodayKey();
+    const todayDay = DAYS[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1];
+    const tod = new Date(); tod.setHours(0,0,0,0);
+    const pastUndone = regularTasks.filter(t => {
+      const d = new Date(t.date); d.setHours(0,0,0,0);
+      return d < tod && !t.done;
+    });
+    // 낙관적 업데이트
+    setTasks(p => p.map(t =>
+      pastUndone.find(u => u.id === t.id)
+        ? { ...t, date: todayKey, day: todayDay }
+        : t
+    ));
+    // 병렬로 Notion 업데이트
+    await Promise.all(pastUndone.map(t =>
+      fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: t.id, date: todayKey, day: todayDay }),
+      })
+    ));
+  };
+
   const handleDrop = async (taskId, newDate, newDay) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
@@ -916,6 +979,7 @@ export default function WeeklyPlanner() {
   const [concernInput, setConcernInput] = useState("");
   const [showRepeatModal, setShowRepeatModal] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
+  useDragAutoScroll(draggingId);
 
   return (
     <div style={{ minHeight: "100vh", background: "#F1F3F0",
@@ -949,15 +1013,31 @@ export default function WeeklyPlanner() {
 
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
 
-            {/* 미완료 알림 뱃지 */}
+            {/* 미완료 알림 뱃지 + 일괄 이월 버튼 */}
             {pastUndoneCount > 0 && (
-              <div style={{
-                background: "#FFF3F3", border: "1.5px solid #FFCDD2",
-                borderRadius: "10px", padding: "6px 12px",
-                fontSize: "11px", color: "#C62828", fontWeight: 600,
-                display: "flex", alignItems: "center", gap: "5px",
-              }}>
-                🔴 미완료 {pastUndoneCount}건
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <div style={{
+                  background: "#FFF3F3", border: "1.5px solid #FFCDD2",
+                  borderRadius: "10px", padding: "6px 12px",
+                  fontSize: "11px", color: "#C62828", fontWeight: 600,
+                  display: "flex", alignItems: "center", gap: "5px",
+                }}>
+                  🔴 미완료 {pastUndoneCount}건
+                </div>
+                <button
+                  onClick={handleBulkCarryOver}
+                  style={{
+                    background: "#E65100", border: "none",
+                    borderRadius: "10px", padding: "6px 12px",
+                    fontSize: "11px", color: "white", fontWeight: 700,
+                    cursor: "pointer", whiteSpace: "nowrap",
+                    transition: "background 0.15s",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = "#BF360C"}
+                  onMouseLeave={e => e.currentTarget.style.background = "#E65100"}
+                >
+                  전체 오늘로 이월 →
+                </button>
               </div>
             )}
 

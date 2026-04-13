@@ -68,6 +68,8 @@ export default async function handler(req, res) {
         concern: page.properties["고민"]?.checkbox || false,
         repeat: page.properties["반복"]?.select?.name || null,
         repeatDays: page.properties["반복요일"]?.multi_select?.map(t => t.name) || [],
+        alarmAt: page.properties["알림시간"]?.date?.start || null,
+        alarmAt: page.properties["알림시간"]?.date?.start || null,
       }));
 
       // 고민 항목 — concern: true (별도 보존)
@@ -129,7 +131,7 @@ export default async function handler(req, res) {
 
   // ── POST ─────────────────────────────────────────────────
   else if (req.method === "POST") {
-    const { text, date, day, project, concern, repeat, repeatDays } = req.body;
+    const { text, date, day, project, concern, repeat, repeatDays, alarmAt } = req.body;
     try {
       const props = {
         이름: { title: [{ text: { content: text } }] },
@@ -141,6 +143,8 @@ export default async function handler(req, res) {
       if (day)  props["요일"] = { select: { name: day } };
       if (repeat) props["반복"] = { select: { name: repeat } };
       if (repeatDays?.length) props["반복요일"] = { multi_select: repeatDays.map(name => ({ name })) };
+      if (alarmAt) props["알림시간"] = { date: { start: alarmAt } };
+      if (alarmAt) props["알림시간"] = { date: { start: alarmAt } };
 
       const page = await notion.pages.create({
         parent: { database_id: DATABASE_ID },
@@ -155,12 +159,13 @@ export default async function handler(req, res) {
 
   // ── PATCH ────────────────────────────────────────────────
   else if (req.method === "PATCH") {
-    const { id, done, date, day } = req.body;
+    const { id, done, date, day, alarmAt } = req.body;
     try {
       const properties = {};
       if (typeof done !== "undefined") properties["완료"] = { checkbox: done };
       if (date) properties["날짜"] = { date: { start: date } };
       if (day)  properties["요일"] = { select: { name: day } };
+      if (alarmAt !== undefined) properties["알림시간"] = alarmAt ? { date: { start: alarmAt } } : { date: null };
       await notion.pages.update({ page_id: id, properties });
       res.status(200).json({ ok: true });
     } catch (error) {

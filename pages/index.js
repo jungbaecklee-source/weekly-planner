@@ -1220,18 +1220,6 @@ export default function WeeklyPlanner() {
             </div>
 
             {/* 알림 권한 버튼 */}
-            {"Notification" in (typeof window !== "undefined" ? window : {}) && Notification.permission !== "granted" && (
-              <button onClick={requestPermission} style={{
-                background: "#FFF8E1", border: "1.5px solid #FFE082",
-                borderRadius: "8px", padding: "0 10px", height: "32px",
-                cursor: "pointer", fontSize: "11px", fontWeight: 600,
-                color: "#F57F17", whiteSpace: "nowrap",
-              }} title="알림 허용">
-                🔔 알림 허용
-              </button>
-            )}
-
-            {/* 알림 권한 버튼 */}
             {permission !== "granted" && (
               <button onClick={subscribe} style={{
                 background: "#FFF8E1", border: "1.5px solid #FFE082",

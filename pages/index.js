@@ -252,7 +252,12 @@ function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew, on
 // ── useNotifications ──────────────────────────────────────
 function useNotifications(tasks) {
   const swRef = useRef(null);
-
+  const [permission, setPermission] = useState("default");
+  useEffect(() => {
+    if (typeof Notification !== "undefined") {
+      setPermission(Notification.permission);
+    }
+  }, []);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !("Notification" in window)) return;

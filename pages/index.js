@@ -93,7 +93,7 @@ function fmt(date) { return `${date.getMonth()+1}/${date.getDate()}`; }
 function getTodayKey() { return dateKey(new Date()); }
 
 // ── TaskItem ──────────────────────────────────────────────
-function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew, onDragStart, onDragEnd, isDragging }) {
+function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew, onDragStart, onDragEnd, isDragging, onAlarmUpdate }) {
   const primaryProject = task.project?.[0];
   const style = getTagStyle(primaryProject);
   const [visible, setVisible] = useState(false);
@@ -178,6 +178,15 @@ function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew, on
               ))}
             </span>
           )}
+          {task.alarmAt && !task.done && (
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: "2px",
+              marginLeft: "5px", fontSize: "10px", color: "#2D7A5E",
+              fontWeight: 600,
+            }}>
+              ⏰{new Date(task.alarmAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })}
+            </span>
+          )}
         </div>
 
         {/* 이월 버튼 — 과거 미완료만 */}
@@ -198,6 +207,39 @@ function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew, on
         )}
       </div>
 
+      {/* 알림 버튼 */}
+      {!task.done && (
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <button
+            onClick={e => {
+              e.stopPropagation();
+              // datetime-local input 트리거
+              const inp = e.currentTarget.nextSibling;
+              inp.showPicker?.() || inp.click();
+            }}
+            title={task.alarmAt ? `알림: ${new Date(task.alarmAt).toLocaleString("ko-KR", {month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}` : "알림 설정"}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              fontSize: "13px", padding: "0 1px", lineHeight: 1, flexShrink: 0,
+              opacity: task.alarmAt ? 1 : 0.3,
+              transition: "opacity 0.15s",
+            }}
+            onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+            onMouseLeave={e => e.currentTarget.style.opacity = task.alarmAt ? "1" : "0.3"}
+          >🔔</button>
+          <input
+            type="datetime-local"
+            defaultValue={task.alarmAt ? task.alarmAt.slice(0,16) : ""}
+            onChange={e => {
+              const val = e.target.value;
+              onAlarmUpdate?.(task.id, val ? new Date(val).toISOString() : null);
+            }}
+            onClick={e => e.stopPropagation()}
+            style={{ position: "absolute", opacity: 0, width: "1px", height: "1px", pointerEvents: "none" }}
+          />
+        </div>
+      )}
+
       <button onClick={e => { e.stopPropagation(); onDelete(task.id); }}
         style={{ background: "none", border: "none", cursor: "pointer",
           color: "#CCCCCC", fontSize: "15px", padding: "0 1px", lineHeight: 1, flexShrink: 0 }}
@@ -205,6 +247,62 @@ function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew, on
         onMouseLeave={e => e.target.style.color = "#CCCCCC"}>×</button>
     </div>
   );
+}
+
+// ── useNotifications ──────────────────────────────────────
+function useNotifications(tasks) {
+  const swRef = useRef(null);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
+
+    // Service Worker 등록
+    navigator.serviceWorker.register("/sw.js").then(reg => {
+      swRef.current = reg;
+    });
+  }, []);
+
+  // 알림 권한 요청 함수 (외부 호출용)
+  const requestPermission = async () => {
+    if (Notification.permission === "granted") return true;
+    const result = await Notification.requestPermission();
+    return result === "granted";
+  };
+
+  // tasks 바뀔 때마다 SW에 알림 재등록
+  useEffect(() => {
+    if (!swRef.current?.active) return;
+    const now = Date.now();
+    tasks.forEach(t => {
+      if (!t.alarmAt || t.done) return;
+      const fireAt = new Date(t.alarmAt).getTime();
+      if (fireAt <= now) return;
+      swRef.current.active.postMessage({
+        type: "SCHEDULE_NOTIFICATION",
+        id: t.id,
+        title: `⏰ ${t.text}`,
+        body: t.project?.length ? `#${t.project.join(" #")}` : "할 일 알림",
+        fireAt,
+      });
+    });
+  }, [tasks]);
+
+  return { requestPermission, swRef };
+}
+
+// ── useMidnightRefresh ─────────────────────────────────────
+function useMidnightRefresh(fetchTasks) {
+  useEffect(() => {
+    let lastDate = new Date().toDateString();
+    const timer = setInterval(() => {
+      const nowDate = new Date().toDateString();
+      if (nowDate !== lastDate) {
+        lastDate = nowDate;
+        fetchTasks();
+      }
+    }, 60_000); // 1분마다 날짜 체크
+    return () => clearInterval(timer);
+  }, [fetchTasks]);
 }
 
 // ── useDragAutoScroll ─────────────────────────────────────
@@ -407,7 +505,7 @@ function RepeatModal({ onClose, onSave, allProjects }) {
 }
 
 // ── DayColumn ─────────────────────────────────────────────
-function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOver, activeFilter, allProjects, isMobile, onDrop, draggingId, onDragStart, onDragEnd }) {
+function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOver, activeFilter, allProjects, isMobile, onDrop, draggingId, onDragStart, onDragEnd, onAlarmUpdate }) {
   const [input, setInput] = useState("");
   const [projectInput, setProjectInput] = useState("");
   const [showProjectInput, setShowProjectInput] = useState(false);
@@ -415,6 +513,8 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
   const [selectedProjects, setSelectedProjects] = useState([]);
   const [newTaskIds, setNewTaskIds] = useState(new Set());
   const [dragOver, setDragOver] = useState(false);
+  const [alarmTime, setAlarmTime] = useState("");
+  const [showAlarmInput, setShowAlarmInput] = useState(false);
   const inputRef = useRef();
   const projectInputRef = useRef();
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
@@ -455,10 +555,17 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
     if (!input.trim()) return;
     const typedProjects = projectInput.split(/[,\s]+/).map(p => p.replace(/^#/, "").trim()).filter(Boolean);
     const projects = [...new Set([...selectedProjects, ...typedProjects])];
-    onAdd(input.trim(), dateKey(date), dayLabel, projects);
+    // alarmTime이 있으면 해당 날짜+시간 조합
+    let alarmAt = null;
+    if (alarmTime) {
+      alarmAt = `${dateKey(date)}T${alarmTime}:00+09:00`;
+    }
+    onAdd(input.trim(), dateKey(date), dayLabel, projects, false, alarmAt);
     setInput("");
     setProjectInput("");
+    setAlarmTime("");
     setShowProjectInput(false);
+    setShowAlarmInput(false);
     setShowDropdown(false);
     setSelectedProjects([]);
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -561,6 +668,7 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
             isDragging={draggingId === t.id}
+            onAlarmUpdate={onAlarmUpdate}
           />
         ))}
       </div>
@@ -597,6 +705,41 @@ function DayColumn({ date, dayLabel, tasks, onToggle, onDelete, onAdd, onCarryOv
             borderRadius: "8px", fontSize: "15px", fontWeight: 700,
             cursor: "pointer", letterSpacing: "0.5px",
           }}>+ 추가</button>
+        )}
+        {showProjectInput && input.trim() && (
+          <button
+            onClick={() => setShowAlarmInput(v => !v)}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              fontSize: "11px", color: showAlarmInput ? "#2D7A5E" : "#BBBBBB",
+              padding: "0", textAlign: "left", fontWeight: 600,
+              transition: "color 0.15s",
+            }}
+          >
+            {showAlarmInput ? "⏰ 알림 설정 중" : "⏰ 알림 추가"}
+          </button>
+        )}
+        {showAlarmInput && input.trim() && (
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ fontSize: "11px", color: "#888" }}>⏰</span>
+            <input
+              type="time"
+              value={alarmTime}
+              onChange={e => setAlarmTime(e.target.value)}
+              style={{
+                flex: 1, padding: "4px 8px",
+                border: "1.5px solid #2D7A5E", borderRadius: "7px",
+                fontSize: isMobile ? "16px" : "12px", outline: "none",
+                color: "#333", background: "white",
+              }}
+            />
+            {alarmTime && (
+              <button onClick={() => setAlarmTime("")} style={{
+                background: "none", border: "none", cursor: "pointer",
+                color: "#CCCCCC", fontSize: "14px", padding: 0,
+              }}>×</button>
+            )}
+          </div>
         )}
         {showProjectInput && (
           <div style={{ position: "relative", zIndex: 100 }}>
@@ -857,13 +1000,13 @@ export default function WeeklyPlanner() {
     });
   };
 
-  const handleAdd = async (text, date, day, project, concern = false) => {
+  const handleAdd = async (text, date, day, project, concern = false, alarmAt = null) => {
     const tempId = `temp-${Date.now()}`;
-    setTasks(p => [...p, { id: tempId, text, date, day, project, done: false, concern }]);
+    setTasks(p => [...p, { id: tempId, text, date, day, project, done: false, concern, alarmAt }]);
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, date, day, project, concern }),
+      body: JSON.stringify({ text, date, day, project, concern, alarmAt }),
     });
     const { id } = await res.json();
     setTasks(p => p.map(t => t.id === tempId ? { ...t, id } : t));
@@ -913,6 +1056,15 @@ export default function WeeklyPlanner() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, date: todayKey, day: todayDay }),
+    });
+  };
+
+  const handleAlarmUpdate = async (id, alarmAt) => {
+    setTasks(p => p.map(t => t.id === id ? { ...t, alarmAt } : t));
+    await fetch("/api/tasks", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, alarmAt }),
     });
   };
 
@@ -980,6 +1132,8 @@ export default function WeeklyPlanner() {
   const [showRepeatModal, setShowRepeatModal] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   useDragAutoScroll(draggingId);
+  useMidnightRefresh(fetchTasks);
+  const { requestPermission } = useNotifications(tasks);
 
   return (
     <div style={{ minHeight: "100vh", background: "#F1F3F0",
@@ -1064,6 +1218,38 @@ export default function WeeklyPlanner() {
                 </button>
               ))}
             </div>
+
+            {/* 알림 권한 버튼 */}
+            {"Notification" in (typeof window !== "undefined" ? window : {}) && Notification.permission !== "granted" && (
+              <button onClick={requestPermission} style={{
+                background: "#FFF8E1", border: "1.5px solid #FFE082",
+                borderRadius: "8px", padding: "0 10px", height: "32px",
+                cursor: "pointer", fontSize: "11px", fontWeight: 600,
+                color: "#F57F17", whiteSpace: "nowrap",
+              }} title="알림 허용">
+                🔔 알림 허용
+              </button>
+            )}
+
+            {/* 알림 권한 버튼 */}
+            {permission !== "granted" && (
+              <button onClick={subscribe} style={{
+                background: "#FFF8E1", border: "1.5px solid #FFE082",
+                borderRadius: "8px", padding: "0 10px", height: "32px",
+                cursor: "pointer", fontSize: "11px", fontWeight: 700,
+                color: "#F57F17", display: "flex", alignItems: "center", gap: "4px",
+                whiteSpace: "nowrap",
+              }} title="알림 권한 허용">
+                🔔 알림 켜기
+              </button>
+            )}
+            {permission === "granted" && (
+              <div style={{
+                fontSize: "11px", color: "#2D7A5E", fontWeight: 600,
+                background: "#E8F4F0", borderRadius: "8px", padding: "0 10px", height: "32px",
+                display: "flex", alignItems: "center", gap: "4px",
+              }}>🔔 알림 ON</div>
+            )}
 
             <button onClick={() => setShowRepeatModal(true)} style={{
               background: "white", border: "1.5px solid #E2E2E2",
@@ -1183,6 +1369,7 @@ export default function WeeklyPlanner() {
                       draggingId={draggingId}
                       onDragStart={id => setDraggingId(id)}
                       onDragEnd={() => setDraggingId(null)}
+                      onAlarmUpdate={handleAlarmUpdate}
                     />
                   );
                 })}

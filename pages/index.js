@@ -253,6 +253,7 @@ function TaskItem({ task, onToggle, onDelete, onCarryOver, isPastTask, isNew, on
 function useNotifications(tasks) {
   const swRef = useRef(null);
 
+
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
 
@@ -264,8 +265,13 @@ function useNotifications(tasks) {
 
   // 알림 권한 요청 함수 (외부 호출용)
   const requestPermission = async () => {
-    if (Notification.permission === "granted") return true;
+    if (!("Notification" in window)) return false;
+    if (Notification.permission === "granted") {
+      setPermission("granted");
+      return true;
+    }
     const result = await Notification.requestPermission();
+    setPermission(result);
     return result === "granted";
   };
 
@@ -287,7 +293,7 @@ function useNotifications(tasks) {
     });
   }, [tasks]);
 
-  return { requestPermission, swRef };
+  return { requestPermission, swRef, permission };
 }
 
 // ── useMidnightRefresh ─────────────────────────────────────
@@ -1133,7 +1139,7 @@ export default function WeeklyPlanner() {
   const [draggingId, setDraggingId] = useState(null);
   useDragAutoScroll(draggingId);
   useMidnightRefresh(fetchTasks);
-  const { requestPermission } = useNotifications(tasks);
+  const { requestPermission, permission } = useNotifications(tasks);
 
   return (
     <div style={{ minHeight: "100vh", background: "#F1F3F0",
@@ -1221,7 +1227,7 @@ export default function WeeklyPlanner() {
 
             {/* 알림 권한 버튼 */}
             {permission !== "granted" && (
-              <button onClick={subscribe} style={{
+              <button onClick={requestPermission} style={{
                 background: "#FFF8E1", border: "1.5px solid #FFE082",
                 borderRadius: "8px", padding: "0 10px", height: "32px",
                 cursor: "pointer", fontSize: "11px", fontWeight: 700,
